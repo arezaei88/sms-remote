@@ -9,7 +9,7 @@
   const PASS_TOKEN = '{pass}';
   // The Android app sends with one tap; the web version can only open the SMS app.
   // The ?v= is the APK's versionCode; raise it when a new APK is uploaded.
-  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=1';
+  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=2';
   const bridge = window.AndroidBridge || null; // only present inside the Android app
   const ua = navigator.userAgent || '';
   const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -117,11 +117,21 @@
   const iconBtn = (name, label, onclick, extra) =>
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick, ...extra }, icon(name));
 
-  // Download link for the Android app; shown only in a browser that could install it.
-  function apkLink(cls) {
-    if (bridge || isIOS) return null;
-    return h('a', { class: cls, href: APK_URL, download: 'sms-remote.apk', rel: 'noopener' },
-      icon('download'), 'دانلود برنامه اندروید (ارسال با یک لمس)');
+  // Download card for the Android app (web version only). On the main pages it stays pinned to
+  // the bottom of the screen until closed; the copy in Settings is always there.
+  function apkCard(pinned) {
+    if (bridge || (pinned && state.settings.apkHidden)) return null;
+    const card = h('div', { class: 'apk-card' },
+      h('a', { class: 'apk-main', href: APK_URL, download: 'sms-remote.apk', rel: 'noopener' },
+        h('span', { class: 'ic' }, icon('download')),
+        h('span', { class: 'tx' }, h('b', null, 'برنامه اندروید'), h('span', null, 'ارسال پیامک فقط با یک لمس')),
+        h('span', { class: 'go' }, 'دانلود')),
+      pinned && iconBtn('close', 'بستن؛ از تنظیمات هم در دسترس است', () => {
+        state.settings.apkHidden = true;
+        save(); render();
+        toast('دانلود برنامه اندروید از «تنظیمات» در دسترس است');
+      }));
+    return pinned ? h('footer', { class: 'page-foot' }, card) : card;
   }
 
   let toastTimer = 0;
@@ -254,13 +264,18 @@
   };
 
   /* -------------------------------------------------------------- main view */
+  // Element.append() would print a missing (null) part as the word "null", so drop those first.
+  function mount(...parts) {
+    $app.append(...parts.filter(Boolean));
+  }
+
   function render() {
     $app.replaceChildren();
     if (!state.devices.length) { renderWelcome(); return; }
     const dev = activeDevice();
     state.activeId = dev.id;
 
-    $app.append(
+    mount(
       h('header', { class: 'topbar' },
         h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '' }), 'ریموت پیامکی'),
         iconBtn('gear', 'تنظیمات', openSettings)),
@@ -295,16 +310,16 @@
       h('p', { class: 'hint' }, bridge && state.settings.direct
         ? 'با لمس هر دکمه، پیامک همان لحظه برای دستگاه ارسال می‌شود.'
         : 'با لمس هر دکمه، صفحه پیامک با متن آماده باز می‌شود؛ فقط «ارسال» را بزنید.'),
-      apkLink('btn ghost'));
+      apkCard(true));
   }
 
   function renderWelcome() {
-    $app.append(h('div', { class: 'welcome' },
+    mount(h('div', { class: 'welcome' },
       h('img', { src: 'icons/icon.svg', alt: '' }),
       h('h1', null, 'ریموت پیامکی'),
       h('p', null, 'دزدگیر و هر وسیله پیامکی را با یک لمس روشن و خاموش کنید. کافی است یک بار شماره سیم‌کارت و رمز دستگاه را وارد کنید.'),
-      h('button', { class: 'btn', type: 'button', onclick: () => openDeviceEditor(null) }, icon('plus'), 'افزودن دستگاه'),
-      apkLink('btn ghost')));
+      h('button', { class: 'btn', type: 'button', onclick: () => openDeviceEditor(null) }, icon('plus'), 'افزودن دستگاه')),
+      apkCard(true));
   }
 
   /* ---------------------------------------------------------- device editor */
@@ -528,8 +543,8 @@
       body.append(h('div', { class: 'card' },
         h('h3', null, 'ارسال پیامک در نسخه وب'),
         h('p', null, 'مرورگرها اجازه ارسال خودکار پیامک نمی‌دهند؛ بنابراین صفحه پیامک با شماره و متن آماده باز می‌شود و شما فقط «ارسال» را می‌زنید.' +
-          (isIOS ? '' : ' برای ارسال فوری با یک لمس، برنامه اندروید را نصب کنید.')),
-        apkLink('btn secondary small')));
+          (isIOS ? '' : ' برای ارسال فوری با یک لمس، برنامه اندروید را نصب کنید.'))),
+        apkCard(false));
     }
     body.append(h('div', { class: 'card' },
       h('h3', null, 'حریم خصوصی'),

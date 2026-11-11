@@ -93,6 +93,8 @@ svg { display: block; }
   max-width: 560px;
   margin: 0 auto;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 28px);
 }
 
@@ -202,7 +204,7 @@ svg { display: block; }
 .empty-cmds { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 28px 12px; border: 1.5px dashed var(--border); border-radius: var(--radius); }
 
 /* ---------- welcome ---------- */
-.welcome { min-height: 78vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px 8px; }
+.welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px 8px; }
 .welcome img { width: 104px; height: 104px; border-radius: 28px; box-shadow: var(--shadow); }
 .welcome h1 { margin: 6px 0 0; font-size: 28px; font-weight: 900; }
 .welcome p { margin: 0; color: var(--muted); max-width: 34ch; }
@@ -222,9 +224,30 @@ svg { display: block; }
 .btn.secondary { background: var(--surface-2); color: var(--text); }
 .btn.ghost { background: transparent; color: var(--primary); }
 .btn.danger { background: transparent; color: var(--danger); }
-.btn { text-decoration: none; }
-a.btn.ghost { margin-top: 10px; font-size: 15.5px; }
-a.btn.small { margin-top: 10px; }
+
+/* ---------- Android app download (web version only) ---------- */
+/* Pinned to the bottom of the screen; rests after the content once the page is scrolled to its end. */
+.page-foot { position: sticky; bottom: calc(var(--safe-bottom) + 12px); z-index: 5; margin-top: auto; padding-top: 20px; }
+.apk-card {
+  display: flex; align-items: center; gap: 2px;
+  padding: 8px 6px 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+}
+.page-foot .apk-card { margin-bottom: 0; box-shadow: 0 6px 24px rgba(15, 23, 42, .18); }
+.apk-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+.apk-main:active { opacity: .8; }
+.apk-card .ic { width: 44px; height: 44px; flex: none; border-radius: 14px; background: var(--surface-2); color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.apk-card .ic svg { width: 24px; height: 24px; }
+.apk-card .tx { flex: 1; min-width: 0; }
+.apk-card .tx b { display: block; font-size: 16px; font-weight: 800; line-height: 1.4; }
+.apk-card .tx span { display: block; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.apk-card .go { flex: none; padding: 9px 16px; border-radius: 12px; background: var(--primary); color: var(--primary-text); font-weight: 800; font-size: 15px; }
+.apk-card .icon-btn { width: 36px; height: 44px; }
+.apk-card .icon-btn svg { width: 18px; height: 18px; }
 .btn.small { min-height: 44px; padding: 8px 14px; font-size: 15px; width: auto; border-radius: 12px; }
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; }

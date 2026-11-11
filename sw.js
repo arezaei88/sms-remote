@@ -1,4 +1,6 @@
-// Offline support: cache the app shell, serve from cache first, refresh in the background.
+// Offline support. The page itself comes from the network when it answers quickly (so a new
+// version shows up on the next visit) and from the cache otherwise; its files are served from
+// the cache first and refreshed in the background.
 // The page registers this file as sw.js?v=N (N comes from index.html). Versioned URLs are what
 // get an update past a CDN that keeps serving the old copy of an unchanged address.
 const VERSION = new URL(self.location.href).searchParams.get('v') || '0';
@@ -34,10 +36,14 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       // Page loads ignore the query string; files must match exactly so a new ?v= is fetched fresh.
-      const cached = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
+      const isPage = req.mode === 'navigate';
+      const cached = await cache.match(req, { ignoreSearch: isPage });
       const fresh = fetch(req)
         .then((res) => { if (res.ok) cache.put(req, res.clone()); return res; })
         .catch(() => cached);
-      return cached || fresh;
+      if (!cached) return fresh;
+      if (!isPage) return cached;
+      const slow = new Promise((resolve) => setTimeout(() => resolve(cached), 2500));
+      return Promise.race([fresh, slow]);
     }));
 });
