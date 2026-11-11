@@ -9,7 +9,7 @@
   const PASS_TOKEN = '{pass}';
   // The Android app sends with one tap; the web version can only open the SMS app.
   // The ?v= is the APK's versionCode; raise it when a new APK is uploaded.
-  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=3';
+  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=4';
   const bridge = window.AndroidBridge || null; // only present inside the Android app
   const ua = navigator.userAgent || '';
   const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -155,6 +155,19 @@
     catch (e) { toast('ذخیره اطلاعات ممکن نشد', 'err'); }
   }
   let state = load();
+
+  // A ready-made installer carries devices (see "ready-made installer" below). Add them once, the
+  // first time that copy of the app starts; devices the owner deletes later stay deleted.
+  function importPreload() {
+    let pre = null;
+    try { pre = JSON.parse(bridge.getPreload() || 'null'); } catch (e) { /* not a ready-made copy */ }
+    if (!pre || !Array.isArray(pre.devices) || pre.id === state.preloadId) return;
+    for (const d of pre.devices) {
+      if (d && d.id && Array.isArray(d.commands) && !state.devices.some((x) => x.id === d.id)) state.devices.push(d);
+    }
+    state.preloadId = pre.id;
+    save();
+  }
   const activeDevice = () => state.devices.find((d) => d.id === state.activeId) || state.devices[0] || null;
 
   /* ----------------------------------------------------------------- sheets */
@@ -293,6 +306,124 @@
     closeSheet();
     toast('اجازه پیامک داده شد؛ حالا دکمه را بزنید', 'ok');
   };
+
+  /* --------------------------------------------------- ready-made installer */
+  // A copy of the Android installer that already holds some devices, so whoever installs it has
+  // nothing to set up. The devices go into the file's "APK Signing Block": Android leaves entries
+  // it does not know out of the signature check, so the copy still installs (and later updates) as
+  // the same app, and the app reads the devices back from its own file (MainActivity.readPreload).
+  const PAYLOAD_ID = 0x736d7372; // our entry ("smsr")
+  const PADDING_ID = 0x42726577; // filler the signing tool adds to round the block up to 4096 bytes
+  const APK_TYPE = 'application/vnd.android.package-archive';
+  const READY_NAME = 'sms-remote-ready.apk';
+
+  // Returns a copy of the installer (Uint8Array) with `text` stored in it, replacing an earlier one.
+  function addPayloadToApk(apk, text) {
+    const view = new DataView(apk.buffer, apk.byteOffset, apk.byteLength);
+    let eocd = apk.length - 22; // the zip "end of central directory" record, searched from the end
+    while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd--;
+    const cd = eocd < 0 ? 0 : view.getUint32(eocd + 16, true); // where the central directory starts
+    const magic = cd >= 32 ? String.fromCharCode(...apk.subarray(cd - 16, cd)) : '';
+    if (magic !== 'APK Sig Block 42') throw new Error('not a signed installer');
+    // The block sits right before the directory: size, entries, size again, 16 bytes of magic.
+    // Sizes are 64-bit numbers, but the file is far below 4 GB, so the low half is enough.
+    const start = cd - view.getUint32(cd - 24, true) - 8;
+    const entry = (id, value) => {
+      const bytes = new Uint8Array(12 + value.length);
+      const v = new DataView(bytes.buffer);
+      v.setUint32(0, value.length + 4, true);
+      v.setUint32(8, id, true);
+      bytes.set(value, 12);
+      return bytes;
+    };
+    const entries = [];
+    for (let p = start + 8; p < cd - 24;) {
+      const len = view.getUint32(p, true);
+      const id = view.getUint32(p + 8, true);
+      if (id !== PAYLOAD_ID && id !== PADDING_ID) entries.push(apk.subarray(p, p + 8 + len));
+      p += 8 + len;
+    }
+    entries.push(entry(PAYLOAD_ID, new TextEncoder().encode(text)));
+    let size = 32 + entries.reduce((n, e) => n + e.length, 0); // + two size fields and the magic
+    if (size % 4096) {
+      let pad = 4096 - (size % 4096);
+      if (pad < 12) pad += 4096;
+      entries.push(entry(PADDING_ID, new Uint8Array(pad - 12)));
+      size += pad;
+    }
+    const out = new Uint8Array(start + size + (apk.length - cd));
+    const o = new DataView(out.buffer);
+    out.set(apk.subarray(0, start));
+    let p = start;
+    o.setUint32(p, size - 8, true); p += 8;
+    for (const e of entries) { out.set(e, p); p += e.length; }
+    o.setUint32(p, size - 8, true); p += 8;
+    out.set(apk.subarray(cd - 16), p); // magic, central directory, end record
+    o.setUint32(p + 16 + (eocd - cd) + 16, start + size, true); // the directory has moved
+    return out;
+  }
+
+  function bytesFromBase64(text) {
+    const bin = atob(text);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function base64FromBytes(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  // The Android app copies its own installer and hands the result to the share menu; the web
+  // version downloads the published installer and saves the result. Nothing is uploaded.
+  async function makeReadyApk(devices) {
+    const text = JSON.stringify({ id: uid(), devices });
+    if (bridge) {
+      bridge.shareApk(READY_NAME, base64FromBytes(addPayloadToApk(bytesFromBase64(bridge.getApk()), text)));
+      return;
+    }
+    const res = await fetch(APK_URL);
+    if (!res.ok) throw new Error('download failed');
+    const file = new Blob([addPayloadToApk(new Uint8Array(await res.arrayBuffer()), text)], { type: APK_TYPE });
+    const link = h('a', { href: URL.createObjectURL(file), download: READY_NAME });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+  }
+
+  function openReadyApkSheet() {
+    if (!state.devices.length) { toast('اول یک دستگاه تعریف کنید'); return; }
+    const picked = new Set(state.devices.map((d) => d.id));
+    const rows = state.devices.map((d) => h('label', { class: 'card pick-row' },
+      h('input', { type: 'checkbox', checked: true, onchange: (e) => { if (e.target.checked) picked.add(d.id); else picked.delete(d.id); } }),
+      h('span', { class: 'grow' }, h('b', null, d.name), h('span', { class: 'sub', dir: 'ltr' }, d.phone))));
+    const go = h('button', {
+      class: 'btn', type: 'button',
+      onclick: async () => {
+        const devices = state.devices.filter((d) => picked.has(d.id));
+        if (!devices.length) { toast('دست‌کم یک دستگاه را انتخاب کنید', 'err'); return; }
+        go.disabled = true;
+        try {
+          await makeReadyApk(devices);
+          if (!bridge) toast('فایل نصب آماده دانلود شد', 'ok');
+          closeSheet();
+        } catch (e) {
+          toast(bridge ? 'ساخت فایل ممکن نشد' : 'ساخت فایل ممکن نشد؛ اتصال اینترنت را بررسی کنید', 'err');
+        }
+        go.disabled = false;
+      },
+    }, bridge ? 'ساخت و ارسال فایل نصب' : 'ساخت و دانلود فایل نصب');
+    openSheet({
+      title: 'نسخه آماده برای دیگران',
+      body: h('div', null,
+        h('p', { class: 'dialog-text' }, 'یک فایل نصب اندروید ساخته می‌شود که دستگاه‌های انتخاب‌شده از قبل داخلش است. هر کس آن را نصب کند، بدون هیچ تنظیمی دکمه‌ها را می‌بیند.'),
+        rows,
+        h('p', { class: 'warn-text' }, 'شماره و رمز دستگاه داخل این فایل است؛ آن را فقط برای کسی بفرستید که باید دستگاه را کنترل کند.')),
+      foot: go,
+    });
+  }
 
   /* -------------------------------------------------------------- main view */
   // Element.append() would print a missing (null) part as the word "null", so drop those first.
@@ -582,14 +713,19 @@
         apkCard(false));
     }
     body.append(h('div', { class: 'card' },
+      h('h3', null, 'نسخه آماده برای دیگران'),
+      h('p', null, 'دستگاه‌هایی را که تعریف کرده‌اید داخل فایل نصب اندروید بگذارید و برای کسی بفرستید؛ بعد از نصب، همه چیز آماده است.'),
+      h('button', { class: 'btn small', type: 'button', style: 'margin-top:10px', onclick: openReadyApkSheet }, 'ساخت نسخه آماده')));
+    body.append(h('div', { class: 'card' },
       h('h3', null, 'حریم خصوصی'),
       h('p', null, 'شماره‌ها و رمزها فقط روی همین گوشی ذخیره می‌شوند و به هیچ سروری فرستاده نمی‌شوند.')));
     openSheet({ title: 'تنظیمات', body });
   }
 
   /* ------------------------------------------------------------------- boot */
-  if (bridge && typeof bridge.isDark === 'function') {
+  if (bridge) {
     document.documentElement.dataset.theme = bridge.isDark() ? 'dark' : 'light';
+    importPreload();
   }
   if (!bridge && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js?v=' + VERSION).catch(() => {}); });

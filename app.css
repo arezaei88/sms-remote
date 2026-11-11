@@ -343,6 +343,12 @@ svg { display: block; }
 .card ol.steps { margin-top: 0; color: var(--text); font-size: 15.5px; line-height: 1.8; }
 .card ol.steps li + li { margin-top: 8px; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
+.pick-row { display: flex; align-items: center; gap: 14px; cursor: pointer; }
+.pick-row input { width: 24px; height: 24px; flex: none; accent-color: var(--primary); }
+.pick-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pick-row b { font-size: 16.5px; overflow-wrap: anywhere; }
+.pick-row .sub { color: var(--muted); font-size: 14.5px; text-align: right; }
+.warn-text { margin: 4px 4px 0; color: var(--muted); font-size: 14.5px; }
 
 .switch-row { display: flex; align-items: center; gap: 14px; }
 .switch-row .grow { flex: 1; }
