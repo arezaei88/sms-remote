@@ -340,6 +340,9 @@ svg { display: block; }
 .card h3 { margin: 0 0 4px; font-size: 16px; }
 .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
 .card ol { margin: 8px 0 0; padding-inline-start: 20px; color: var(--muted); font-size: 14.5px; }
+.card ol.steps { margin-top: 0; color: var(--text); font-size: 15.5px; line-height: 1.8; }
+.card ol.steps li + li { margin-top: 8px; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
 
 .switch-row { display: flex; align-items: center; gap: 14px; }
 .switch-row .grow { flex: 1; }

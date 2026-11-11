@@ -9,7 +9,7 @@
   const PASS_TOKEN = '{pass}';
   // The Android app sends with one tap; the web version can only open the SMS app.
   // The ?v= is the APK's versionCode; raise it when a new APK is uploaded.
-  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=2';
+  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=3';
   const bridge = window.AndroidBridge || null; // only present inside the Android app
   const ua = navigator.userAgent || '';
   const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -256,11 +256,42 @@
     if (status === 'sent') {
       toast('✓ ' + label + (p ? ' برای ' + p.dev.name : '') + ' ارسال شد', 'ok');
     } else if (status === 'denied') {
-      toast('اجازه ارسال پیامک داده نشد؛ صفحه پیامک باز می‌شود', 'err');
-      if (p) bridge.openSms(p.dev.phone, p.body);
+      openSmsPermissionHelp(p);
     } else {
       toast('ارسال نشد' + (detail ? ': ' + detail : ''), 'err');
     }
+  };
+
+  // Android refuses the SMS permission to apps installed from a downloaded file ("App was denied
+  // access to SMS") until the owner lifts that restriction in the app's system settings. The app
+  // cannot do it for them, so a refusal gets the steps and a way to send this one message anyway.
+  let helpSheet = null; // the open guide, so it can close itself once the permission is given
+  function openSmsPermissionHelp(job) {
+    const steps = [
+      'دکمه «باز کردن تنظیمات برنامه» را در پایین همین صفحه بزنید.',
+      'در صفحه‌ای که باز می‌شود، سه‌نقطه ⋮ بالای صفحه را بزنید و «Allow restricted settings» (اجازه به تنظیمات محدودشده) را انتخاب کنید. اگر سه‌نقطه یا این گزینه را ندیدید، به مرحله بعد بروید.',
+      'در همان صفحه به «Permissions» (مجوزها) بروید، «SMS» (پیامک) را بزنید و «Allow» (مجاز) را انتخاب کنید.',
+      'به این برنامه برگردید و دکمه را دوباره بزنید.',
+    ];
+    openSheet({
+      title: 'اجازه ارسال پیامک',
+      body: h('div', null,
+        h('p', { class: 'dialog-text' }, 'گوشی اجازه ارسال پیامک را به این برنامه نداد. اندروید این اجازه را برای برنامه‌هایی که بیرون از فروشگاه نصب شده‌اند می‌بندد و باید یک بار خودتان آن را باز کنید:'),
+        h('div', { class: 'card' }, h('ol', { class: 'steps' }, steps.map((s) => h('li', null, s))))),
+      foot: h('div', { class: 'stack' },
+        h('button', { class: 'btn', type: 'button', onclick: () => bridge.openAppSettings() }, 'باز کردن تنظیمات برنامه'),
+        job && h('button', { class: 'btn secondary', type: 'button', onclick: () => { closeSheet(); bridge.openSms(job.dev.phone, job.body); } },
+          'این بار از برنامه پیامک بفرست')),
+    });
+    helpSheet = sheetStack[sheetStack.length - 1];
+  }
+
+  // Called by the Android app each time it comes back to the front (e.g. from system settings).
+  window.onAppResume = () => {
+    if (!helpSheet || sheetStack[sheetStack.length - 1] !== helpSheet || !bridge.hasSmsPermission()) return;
+    helpSheet = null;
+    closeSheet();
+    toast('اجازه پیامک داده شد؛ حالا دکمه را بزنید', 'ok');
   };
 
   /* -------------------------------------------------------------- main view */
@@ -526,7 +557,11 @@
     if (bridge) {
       body.append(
         switchRow('ارسال فوری با یک لمس', 'با زدن هر دکمه، پیامک همان لحظه ارسال می‌شود. اگر خاموش باشد، صفحه پیامک با متن آماده باز می‌شود.', 'direct'),
-        switchRow('پرسش قبل از ارسال', 'برای جلوگیری از لمس اشتباهی، قبل از ارسال تأیید گرفته می‌شود.', 'confirm'));
+        switchRow('پرسش قبل از ارسال', 'برای جلوگیری از لمس اشتباهی، قبل از ارسال تأیید گرفته می‌شود.', 'confirm'),
+        h('div', { class: 'card' },
+          h('h3', null, 'ارسال فوری کار نمی‌کند؟'),
+          h('p', null, 'اگر گوشی پیام «App was denied access to SMS» می‌دهد، باید یک بار اجازه پیامک را در تنظیمات گوشی باز کنید.'),
+          h('button', { class: 'btn small', type: 'button', style: 'margin-top:10px', onclick: () => openSmsPermissionHelp(null) }, 'راهنمای اجازه پیامک')));
     } else {
       const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
       if (!standalone) {
