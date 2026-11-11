@@ -1,8 +1,15 @@
 (() => {
   'use strict';
 
+  // Version of the files, taken from the ?v= on this script's address in index.html.
+  const script = document.currentScript;
+  const VERSION = (script && new URL(script.src).searchParams.get('v')) || '0';
+
   const STORE_KEY = 'smsremote.v1';
   const PASS_TOKEN = '{pass}';
+  // The Android app sends with one tap; the web version can only open the SMS app.
+  // The ?v= is the APK's versionCode; raise it when a new APK is uploaded.
+  const APK_URL = 'https://arezaei.ir/sms-remote/download/sms-remote.apk?v=1';
   const bridge = window.AndroidBridge || null; // only present inside the Android app
   const ua = navigator.userAgent || '';
   const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -37,6 +44,7 @@
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     close: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
+    download: '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
   };
   const CMD_ICONS = ['lock', 'unlock', 'power', 'door', 'shield', 'pulse', 'sim', 'bell', 'bulb', 'plug', 'phone', 'key', 'home', 'message'];
   const COLORS = ['red', 'green', 'blue', 'amber', 'violet', 'slate'];
@@ -108,6 +116,13 @@
   }
   const iconBtn = (name, label, onclick, extra) =>
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick, ...extra }, icon(name));
+
+  // Download link for the Android app; shown only in a browser that could install it.
+  function apkLink(cls) {
+    if (bridge || isIOS) return null;
+    return h('a', { class: cls, href: APK_URL, download: 'sms-remote.apk', rel: 'noopener' },
+      icon('download'), 'دانلود برنامه اندروید (ارسال با یک لمس)');
+  }
 
   let toastTimer = 0;
   function toast(text, kind) {
@@ -279,7 +294,8 @@
 
       h('p', { class: 'hint' }, bridge && state.settings.direct
         ? 'با لمس هر دکمه، پیامک همان لحظه برای دستگاه ارسال می‌شود.'
-        : 'با لمس هر دکمه، صفحه پیامک با متن آماده باز می‌شود؛ فقط «ارسال» را بزنید.'));
+        : 'با لمس هر دکمه، صفحه پیامک با متن آماده باز می‌شود؛ فقط «ارسال» را بزنید.'),
+      apkLink('btn ghost'));
   }
 
   function renderWelcome() {
@@ -287,7 +303,8 @@
       h('img', { src: 'icons/icon.svg', alt: '' }),
       h('h1', null, 'ریموت پیامکی'),
       h('p', null, 'دزدگیر و هر وسیله پیامکی را با یک لمس روشن و خاموش کنید. کافی است یک بار شماره سیم‌کارت و رمز دستگاه را وارد کنید.'),
-      h('button', { class: 'btn', type: 'button', onclick: () => openDeviceEditor(null) }, icon('plus'), 'افزودن دستگاه')));
+      h('button', { class: 'btn', type: 'button', onclick: () => openDeviceEditor(null) }, icon('plus'), 'افزودن دستگاه'),
+      apkLink('btn ghost')));
   }
 
   /* ---------------------------------------------------------- device editor */
@@ -511,7 +528,8 @@
       body.append(h('div', { class: 'card' },
         h('h3', null, 'ارسال پیامک در نسخه وب'),
         h('p', null, 'مرورگرها اجازه ارسال خودکار پیامک نمی‌دهند؛ بنابراین صفحه پیامک با شماره و متن آماده باز می‌شود و شما فقط «ارسال» را می‌زنید.' +
-          (isIOS ? '' : ' برای ارسال فوری با یک لمس، برنامه اندروید را نصب کنید.'))));
+          (isIOS ? '' : ' برای ارسال فوری با یک لمس، برنامه اندروید را نصب کنید.')),
+        apkLink('btn secondary small')));
     }
     body.append(h('div', { class: 'card' },
       h('h3', null, 'حریم خصوصی'),
@@ -524,7 +542,7 @@
     document.documentElement.dataset.theme = bridge.isDark() ? 'dark' : 'light';
   }
   if (!bridge && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js?v=' + VERSION).catch(() => {}); });
   }
   render();
 })();
